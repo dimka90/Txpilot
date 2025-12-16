@@ -132,7 +132,7 @@ async function getCryptoPrices(cryptoIds: string[]): Promise<any> {
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);
     }
-    console.log(response)
+
     return await response.json();
   } catch (error) {
     logger.error('Error fetching crypto prices:', error);
@@ -187,7 +187,10 @@ const getCryptoPriceAction: Action = {
 
       // If no specific crypto mentioned, default to Bitcoin and Ethereum
       const cryptoIds = mentionedCrypto.size > 0 ? Array.from(mentionedCrypto) : ['bitcoin', 'ethereum'];
+      logger.info(`Fetching prices for: ${cryptoIds.join(', ')}`);
+
       const prices = await getCryptoPrices(cryptoIds);
+      logger.info('Prices received:', JSON.stringify(prices));
 
       let responseText = 'Current cryptocurrency prices:\n\n';
       for (const [crypto, data] of Object.entries(prices)) {
@@ -201,10 +204,12 @@ const getCryptoPriceAction: Action = {
         responseText += '\n';
       }
 
+      logger.info('Sending callback with response:', responseText);
       await callback({
         text: responseText,
         actions: ['GET_CRYPTO_PRICE'],
       });
+      logger.info('Callback completed successfully');
 
       return {
         text: 'Fetched cryptocurrency prices successfully',
