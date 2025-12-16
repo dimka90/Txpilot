@@ -39,17 +39,6 @@ const configSchema = z.object({
  * Example HelloWorld action
  * This demonstrates the simplest possible action structure
  */
-/**
- * Represents an action that responds with a simple hello world message.
- *
- * @typedef {Object} Action
- * @property {string} name - The name of the action
- * @property {string[]} similes - The related similes of the action
- * @property {string} description - Description of the action
- * @property {Function} validate - Validation function for the action
- * @property {Function} handler - The function that handles the action
- * @property {Object[]} examples - Array of examples for the action
- */
 const helloWorldAction: Action = {
   name: 'HELLO_WORLD',
   similes: ['GREET', 'SAY_HELLO'],
@@ -65,8 +54,7 @@ const helloWorldAction: Action = {
     message: Memory,
     _state: State,
     _options: any,
-    callback: HandlerCallback,
-    _responses: Memory[]
+    callback: HandlerCallback
   ): Promise<ActionResult> => {
     try {
       logger.info('Handling HELLO_WORLD action');
@@ -132,31 +120,147 @@ const helloWorldAction: Action = {
   ],
 };
 
-
 /**
- * Helper function to fetch prices from CoincGecko
+ * Helper function to fetch prices from CoinGecko
  */
-
-async function  getCryptoPrices(cryptoIds: string[]): Promise<any>{
- try {
-  const ids = cryptoIds.join(',')
-  const response = await fetch(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true`
-  )
-  if (!response.ok){
-    throw new Error(`API error: ${response.status}`);
-
-  }
-
-  return await response.json();
-
+async function getCryptoPrices(cryptoIds: string[]): Promise<any> {
+  try {
+    const ids = cryptoIds.join(',');
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true`
+    );
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    console.log(response)
+    return await response.json();
   } catch (error) {
-    logger.error('Error fetchinh crypto prices:', error)
-    
+    logger.error('Error fetching crypto prices:', error);
+    throw error;
   }
 }
 
+const getCryptoPriceAction: Action = {
+  name: 'GET_CRYPTO_PRICE',
+  similes: ['FETCH_PRICE', 'CHECK_CRYPTO', 'CRYPTO_PRICE'],
+  description: 'Fetches current cryptocurrency prices from CoinGecko API',
+  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    const text = message.content.text?.toLowerCase() || '';
+    const cryptoKeywords = ['bitcoin', 'ethereum', 'crypto', 'price', 'btc', 'eth', 'solana', 'cardano', 'ripple', 'dogecoin'];
 
+    return cryptoKeywords.some((keyword) => text.includes(keyword));
+  },
+
+  handler: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+    _options: any,
+    callback: HandlerCallback
+  ): Promise<ActionResult> => {
+    try {
+      logger.info('Handling GET_CRYPTO_PRICE action');
+
+      const text = message.content.text?.toLowerCase() || '';
+      const cryptoMap: Record<string, string> = {
+        bitcoin: 'bitcoin',
+        btc: 'bitcoin',
+        ethereum: 'ethereum',
+        eth: 'ethereum',
+        solana: 'solana',
+        sol: 'solana',
+        cardano: 'cardano',
+        ada: 'cardano',
+        ripple: 'ripple',
+        xrp: 'ripple',
+        dogecoin: 'dogecoin',
+        doge: 'dogecoin',
+      };
+
+      // Find which cryptos were mentioned
+      const mentionedCrypto = new Set<string>();
+      for (const [name, id] of Object.entries(cryptoMap)) {
+        if (text.includes(name)) {
+          mentionedCrypto.add(id);
+        }
+      }
+
+      // If no specific crypto mentioned, default to Bitcoin and Ethereum
+      const cryptoIds = mentionedCrypto.size > 0 ? Array.from(mentionedCrypto) : ['bitcoin', 'ethereum'];
+      const prices = await getCryptoPrices(cryptoIds);
+
+      let responseText = 'Current cryptocurrency prices:\n\n';
+      for (const [crypto, data] of Object.entries(prices)) {
+        const price = (data as any).usd;
+        const change24h = (data as any).usd_24h_change?.toFixed(2);
+
+        responseText += `${crypto.toUpperCase()}: $${price} USD`;
+        if (change24h) {
+          responseText += ` (${change24h > 0 ? '+' : ''}${change24h}% 24h)`;
+        }
+        responseText += '\n';
+      }
+
+      await callback({
+        text: responseText,
+        actions: ['GET_CRYPTO_PRICE'],
+      });
+
+      return {
+        text: 'Fetched cryptocurrency prices successfully',
+        values: {
+          success: true,
+          cryptos: cryptoIds,
+          priceData: prices,
+        },
+        data: {
+          actionName: 'GET_CRYPTO_PRICE',
+          timestamp: Date.now(),
+        },
+        success: true,
+      };
+    } catch (error) {
+      logger.error('Error in GET_CRYPTO_PRICE action:', error);
+
+      await callback({
+        text: 'Sorry, I could not fetch the cryptocurrency prices at this moment. Please try again later.',
+        error: true,
+      });
+
+      return {
+        text: 'Failed to fetch cryptocurrency prices',
+        values: {
+          success: false,
+          error: 'PRICE_FETCH_FAILED',
+        },
+        data: {
+          actionName: 'GET_CRYPTO_PRICE',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
+    }
+  },
+
+  examples: [
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'What is the price of Bitcoin?' },
+      },
+      {
+        name: 'CryptoPrice',
+        content: {
+          text: 'Current cryptocurrency prices:\n\nBITCOIN: $45,230 USD (+5.2% 24h)',
+          actions: ['GET_CRYPTO_PRICE'],
+        },
+      },
+    ],
+  ],
+};
+
+/**
  * Example Hello World Provider
  * This demonstrates the simplest possible provider implementation
  */
@@ -238,20 +342,13 @@ const plugin: Plugin = {
   models: {
     [ModelType.TEXT_SMALL]: async (
       _runtime,
-      { prompt, stopSequences = [] }: GenerateTextParams
+      _params: GenerateTextParams
     ) => {
       return 'Never gonna give you up, never gonna let you down, never gonna run around and desert you...';
     },
     [ModelType.TEXT_LARGE]: async (
       _runtime,
-      {
-        prompt,
-        stopSequences = [],
-        maxTokens = 8192,
-        temperature = 0.7,
-        frequencyPenalty = 0.7,
-        presencePenalty = 0.7,
-      }: GenerateTextParams
+      _params: GenerateTextParams
     ) => {
       return 'Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...';
     },
@@ -300,7 +397,7 @@ const plugin: Plugin = {
     ],
   },
   services: [StarterService],
-  actions: [helloWorldAction],
+  actions: [helloWorldAction, getCryptoPriceAction],
   providers: [helloWorldProvider],
 };
 
