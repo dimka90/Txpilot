@@ -132,7 +132,31 @@ const helloWorldAction: Action = {
   ],
 };
 
+
 /**
+ * Helper function to fetch prices from CoincGecko
+ */
+
+async function  getCryptoPrices(cryptoIds: string[]): Promise<any>{
+ try {
+  const ids = cryptoIds.join(',')
+  const response = await fetch(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true`
+  )
+  if (!response.ok){
+    throw new Error(`API error: ${response.status}`);
+
+  }
+
+  return await response.json();
+
+  } catch (error) {
+    logger.error('Error fetchinh crypto prices:', error)
+    
+  }
+}
+
+
  * Example Hello World Provider
  * This demonstrates the simplest possible provider implementation
  */
